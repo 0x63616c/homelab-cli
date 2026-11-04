@@ -1,55 +1,57 @@
-# homelab
+# Disposable macOS fixture
 
-A guided terminal client for declarative macOS homelabs.
-Your configuration stays in your own repository. Nix runs on the target Mac,
-not your personal laptop.
+This is a template, not an evaluated or deployed configuration. It exercises the
+real bootstrap installer, Nix build, host-key installation, SOPS decryption,
+activation and launchd startup. It has no tailnet enrollment, updater, production
+services or Homebrew management. Never use it on physical hardware.
 
-## Get started
+## Prepare a synthetic fixture commit
 
-```sh
-brew install 0x63616c/tap/homelab
-homelab
-```
+Copy this directory into a new clean repository checkout for a **synthetic test
+branch**. Keep all generated private files in a separate owner-only temporary
+state directory, outside that checkout. The operator owns publishing this branch;
+the test harness never publishes it automatically.
 
-1. **Connect:** select a Mac and verify SSH access. On a fresh Mac, first create
-   its administrator account and enable Remote Login.
-2. **Prepare:** attach your configuration repository once (`owner/repository`),
-   then prepare the missing credentials. The wizard remembers the repository and
-   host binding. It uses the bootstrap helper shipped with this release.
-3. **Review & set up:** review the exact configuration commit and target, then
-   approve installation. The target installs Nix, checks the configuration and
-   builds it before activation.
+1. Generate a disposable Ed25519 key with `ssh-keygen -t ed25519 -N '' -f STATE/id_ed25519`,
+   where `STATE` is the separate private temporary directory, never `~/.ssh`. Replace the `homelab.json` public-key placeholder with its `.pub`
+   content. Retain the private key outside Git and use it only for this VM.
+2. Generate a disposable age identity with `age-keygen -o PATH`. Extract its public
+   recipient with `age-keygen -y PATH`. Encrypt the synthetic entry documented in
+   `secrets/README.md` using SOPS and that explicit recipient; save only ciphertext
+   as `secrets/vm-test.sops.yaml`. Use an isolated working directory and explicit
+   SOPS configuration so operator defaults cannot leave the field unencrypted.
+3. The harness supplies its own synthetic GitHub-token file. The
+   fixture branch must be public, so Git does not need a real repository token.
+   Do not supply production tokens, production age keys or any tailnet key.
+4. Commit the generated public key and ciphertext with these templates. Keep
+   `flake.lock` unchanged. The reviewed configuration revision is this commit;
+   it is independent of the public helper revision pinned in `helper.nix`.
 
-Use **↑ / ↓** to choose, **Enter** to continue and **Esc** to go back.
-Opening the CLI never deploys. It never installs Nix on your client laptop.
+The included lockfile contains only the transitive public Nix inputs needed by
+this fixture. The helper source is pinned independently to a published commit.
+No private deployment configuration is included.
 
-## How it fits together
+## Guest preparation and evidence
 
-```mermaid
-flowchart LR
-  Release[Public CLI release] --> Client[Your laptop: homelab]
-  Repo[Your private configuration] --> Client
-  Vault[Credential source: 1Password] --> Client
-  Client -->|Reviewed setup over SSH| Mac[Target Mac]
-  Repo -->|Exact approved commit| Mac
-  Mac --> Nix[Nix builds and launchd services]
-```
+Use a disposable ARM64 macOS VM with user `admin`, UID 501, and Remote Login.
+Set its hostname to `vm-test` before the harness starts. Install the disposable
+SSH public key and seed `/var/tmp/homelab-vm-e2e.json` with the harness nonce and
+hostname. The harness also checks `hw.model` starts with `VirtualMac`.
 
-| Keep here | Keep in your configuration repo |
-| --- | --- |
-| UI, SSH, portable installer, credential adapters | Hosts, Nix, services, encrypted secrets |
-| Synthetic tests | Private service checks and operational data |
+A vanilla image must first demonstrate the missing Command Line Tools error.
+Install CLT inside that guest before the positive bootstrap run. A base image
+with CLT preinstalled cannot establish that fresh-machine prerequisite behavior.
 
-Credentials and recovery keys are not compiled into the CLI. The 1Password
-adapter runs only on your laptop; targets receive only their scoped secrets.
+After activation the harness verifies:
 
-## Configuration and testing
+- `/etc/homelab-vm-e2e.json` identifies `vm-test` and the exact fixture commit.
+- `/var/lib/sops-nix/key.txt` is root-owned mode 0600 inside a mode-0700 directory.
+- Launchd job `org.homelab.vm-e2e` exists. It decrypts the synthetic marker before
+  writing the current `kern.boottime` to `/var/tmp/homelab-vm-e2e-boot`.
+- After a **guest-only reboot**, the boot timestamp changes and all checks pass
+  again. The job retries if SOPS initialization has not finished yet.
 
-- [Configuration contract](docs/configuration.md) — one small manifest, shared with Nix.
-- [Setup and recovery](docs/setup.md) — what each step changes and how to resume.
-- [Testing](docs/testing.md) — automated macOS journeys and their limits.
-
-**Current scope:** SSH onboarding, local secret preparation and explicitly
-approved bootstrap. Publishing encrypted configuration still requires repository
-review. Runner registration, service migration and a persistent node agent are
-not implemented by this wizard.
+The fixture's pre-activation guard independently refuses non-VM hardware. Keep
+the VM and test state for inspection on failure; do not reinterpret an interrupted
+connection as proof that setup stopped. No physical host reboot is part of this
+fixture. Nix evaluation and runtime evidence remain pending until a VM is available.

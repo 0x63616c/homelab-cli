@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "hosts": {
+    "vm-test": {
+      "adminUser": "admin",
+      "adminUID": 501,
+      "authorizedKeys": [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAHTk7ZuLLyBRUhnVI/WXcQMaPlLxAuaYvTK5vOKyEBE disposable-vm-only"
+      ],
+      "activationReady": true,
+      "services": []
+    }
+  },
+  "tailscale": null
+}
